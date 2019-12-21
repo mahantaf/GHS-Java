@@ -4,6 +4,7 @@ package Components;
 import Events.InitMessage;
 import Ports.EdgePort;
 import misc.Edge;
+import misc.EdgeState;
 import se.sics.kompics.Channel;
 import se.sics.kompics.Component;
 import se.sics.kompics.ComponentDefinition;
@@ -65,7 +66,7 @@ public class App extends ComponentDefinition {
                             }
                             if (!components.containsKey(edge.dst)) {
                                 ArrayList<Edge> neighborEdges = new ArrayList<>();
-                                HashMap<String, Integer> nb = findNeighbours(edge.src, neighborEdges);
+                                HashMap<String, Integer> nb = findNeighbours(edge.dst, neighborEdges);
                                 Component c = create(Node.class, new InitMessage(edge.dst, edge.dst.equalsIgnoreCase
                                         (startNode), nb, neighborEdges));
                                 components.put(edge.dst, c);
@@ -95,9 +96,10 @@ public class App extends ComponentDefinition {
         for (Edge tr : edges) {
             if (tr.src.equalsIgnoreCase(node) && !nb.containsKey(tr.dst)) {
                 nb.put(tr.dst, tr.weight);
-                neighborEdges.add(tr);
+                neighborEdges.add(new Edge(tr.src, tr.dst, tr.weight));
             } else if (tr.dst.equalsIgnoreCase(node) && !nb.containsKey(tr.src)) {
                 nb.put(tr.src, tr.weight);
+                neighborEdges.add(new Edge(tr.dst, tr.src, tr.weight));
             }
         }
         return nb;
