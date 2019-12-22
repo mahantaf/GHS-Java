@@ -25,6 +25,7 @@ public class App extends ComponentDefinition {
     Map<String, Component> components = new HashMap<String, Component>();
 
     public App() {
+        createOutputFile();
         readTable();
     }
 
@@ -46,7 +47,6 @@ public class App extends ComponentDefinition {
             int i = 0;
             while (scanner.hasNext()) {
                 String line = scanner.nextLine();
-
                 if (i > 0) {
                     if (line.split(",").length > 1) {
                         int weight = Integer.parseInt(line.split(",")[1]);
@@ -89,6 +89,18 @@ public class App extends ComponentDefinition {
             e.printStackTrace();
         }
 
+    }
+
+    public void createOutputFile() {
+        try {
+            File treeFile = new File("src/main/java/tree.txt");
+            if (treeFile.exists())
+                treeFile.delete();
+            else
+                treeFile.createNewFile();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private HashMap<String, Integer> findNeighbours(String node, ArrayList<Edge> neighborEdges) {

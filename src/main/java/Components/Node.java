@@ -4,6 +4,11 @@ import Ports.EdgePort;
 import misc.Edge;
 import misc.EdgeState;
 import se.sics.kompics.*;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,6 +55,7 @@ public class Node extends ComponentDefinition {
         subscribe(testReplyHandler, receivePort);
         subscribe(connectHandler, receivePort);
         subscribe(initHandler, receivePort);
+        subscribe(printTreeHandler, receivePort);
     }
 
     public Edge findEdge (String src, String dst) {
@@ -114,6 +120,33 @@ public class Node extends ComponentDefinition {
             i--;
         }
     }
+    public void writeBranchEdgesToFile(String line) {
+        try {
+            Writer output;
+            output = new BufferedWriter(new FileWriter("src/main/java/tree.txt", true));
+            output.append(line + "\n");
+            output.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    Handler printTreeHandler = new Handler<PrintTreeMessage>() {
+        @Override
+        public void handle(PrintTreeMessage event) {
+            if (nodeName.equalsIgnoreCase(event.dst)) {
+                System.out.println("Node " + nodeName + " has received PRINT_TREE from " + event.src);
+                unsubscribe(reportHandler, receivePort);
+                for (Map.Entry<String, Integer> entry : neighbours.entrySet()) {
+                    Edge candidate = findEdge(nodeName, entry.getKey());
+                    if (candidate.state == EdgeState.Branch && !candidate.dst.equalsIgnoreCase(event.src)) {
+                        writeBranchEdgesToFile(candidate.src + "-" + candidate.dst + "," + candidate.weight);
+                        trigger(new PrintTreeMessage(nodeName, entry.getKey()), sendPort);
+                    }
+                }
+            }
+        }
+    };
 
     Handler connectHandler = new Handler<ConnectMessage>() {
         @Override
@@ -204,7 +237,14 @@ public class Node extends ComponentDefinition {
                                 }
                             } else {
                                 System.out.println("Node " + nodeName + " should terminate the process.");
-                                // TODO: It should terminate the process and print the tree.
+                                unsubscribe(reportHandler, receivePort);
+                                for (Map.Entry<String, Integer> entry : neighbours.entrySet()) {
+                                    Edge candidate = findEdge(nodeName, entry.getKey());
+                                    if (candidate.state == EdgeState.Branch) {
+                                        writeBranchEdgesToFile(candidate.src + "-" + candidate.dst + "," + candidate.weight);
+                                        trigger(new PrintTreeMessage(nodeName, entry.getKey()), sendPort);
+                                    }
+                                }
                             }
                         }
                         reportCount = 0;
@@ -318,7 +358,6 @@ public class Node extends ComponentDefinition {
                     // If no edge found send report message to root via parent with report message that contains infinity weight.
                     state = State.Sleep;
                     System.out.println("Node " + nodeName + " has found no candidate edge.");
-//                    trigger(new ReportMessage(nodeName, parentName, 10000), sendPort);
                     reportHandler.handle(new ReportMessage(nodeName, nodeName, nodeName,10000));
                 }
             }
