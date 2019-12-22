@@ -16,6 +16,7 @@ public class Node extends ComponentDefinition {
     public String fragmentName;
     public String fragmentRoot;
     public int fragmentLevel;
+    public int reportCount;
 
     public int minimumWeightFound;
     public String minimumNeighborFound;
@@ -40,6 +41,7 @@ public class Node extends ComponentDefinition {
         this.fragmentRoot = initMessage.nodeName;
         this.fragmentLevel = 1;
         this.parentName = null;
+        this.reportCount = 0;
 
         subscribe(startHandler, control);
         subscribe(reportHandler, receivePort);
@@ -120,8 +122,7 @@ public class Node extends ComponentDefinition {
 
                 System.out.println("Node " + nodeName + " has received CONNECT from " + event.src);
 
-                if (event.fragmentLevel < fragmentLevel) {
-
+                if (event.fragmentLevel < fragmentLevel && findEdge(event.dst, event.src).state != EdgeState.Branch) {
                     System.out.println("Node " + nodeName + " and " + event.src + " are in ABSORB phase");
 
                     // Absorb phase
@@ -133,7 +134,7 @@ public class Node extends ComponentDefinition {
                 } else if (findEdge(nodeName, event.src).state == EdgeState.Branch) {
 
                     // Merge phase
-                    fragmentLevel++;
+                    fragmentLevel = event.fragmentLevel + 1;
                     fragmentRoot = (nodeName.charAt(0) - event.src.charAt(0)) > 0 ? nodeName : event.src;
                     fragmentName = fragmentRoot;
                     if (fragmentRoot.equalsIgnoreCase(nodeName))
@@ -141,7 +142,8 @@ public class Node extends ComponentDefinition {
                     else
                         parentName = fragmentRoot;
 
-                    System.out.println("Node " + nodeName + " and " + event.src + " are in MERGE phase with root " + fragmentRoot);
+                    System.out.println("Node " + nodeName + " and " + event.src + " are in MERGE phase with root " + fragmentRoot +
+                                        " and fragment level " + fragmentLevel);
 
 //                    findEdge(event.dst, event.src).state = EdgeState.Branch;
                     trigger(new StartMessage(nodeName, event.src, fragmentRoot, fragmentName, fragmentLevel), sendPort);
@@ -156,16 +158,17 @@ public class Node extends ComponentDefinition {
     Handler changeRootHandler = new Handler<ChangeRootMessage>() {
         @Override
         public void handle(ChangeRootMessage event) {
-
-            System.out.println("Node " + nodeName + " has received CHANGE_ROOT from " + event.src);
             if (nodeName.equalsIgnoreCase(event.dst)) {
-                findEdge(nodeName, minimumNeighborFound).state = EdgeState.Branch;
-                trigger(new ConnectMessage(nodeName, minimumNeighborFound, fragmentName, fragmentLevel), sendPort);
-            } else {
-                for (Map.Entry<String, Integer> entry : neighbours.entrySet()) {
-                    if (findEdge(nodeName, entry.getKey()).state == EdgeState.Branch &&
-                            !findEdge(nodeName, entry.getKey()).dst.equalsIgnoreCase(event.src)) {
-                        trigger(new ChangeRootMessage(nodeName, event.dst), sendPort);
+                System.out.println("Node " + nodeName + " has received CHANGE_ROOT from " + event.src);
+                if(nodeName.equalsIgnoreCase(event.minFinder)) {
+                    findEdge(nodeName, minimumNeighborFound).state = EdgeState.Branch;
+                    trigger(new ConnectMessage(nodeName, minimumNeighborFound, fragmentName, fragmentLevel), sendPort);
+                } else {
+                    for (Map.Entry<String, Integer> entry : neighbours.entrySet()) {
+                        if (findEdge(nodeName, entry.getKey()).state == EdgeState.Branch &&
+                                !findEdge(nodeName, entry.getKey()).dst.equalsIgnoreCase(event.src)) {
+                            trigger(new ChangeRootMessage(nodeName, entry.getKey(), event.minFinder), sendPort);
+                        }
                     }
                 }
             }
@@ -179,7 +182,8 @@ public class Node extends ComponentDefinition {
                 System.out.println("Node " + nodeName + " has received REPORT from " + event.src + " with weight " + event.minimumWeight);
                 if(fragmentLevel > 1) {
                     minimumWeights.put(event.minFinder, event.minimumWeight);
-                    if (minimumWeights.size() == (1 + (numberOfBranchEdges() + (parentName == null ? 0 : -1)))) {
+                    reportCount++;
+                    if (reportCount == (1 + (numberOfBranchEdges() + (parentName == null ? 0 : -1)))) {
                         String minFinder = findMinimumLeaf();
                         if (parentName != null) {
                             System.out.println("Node " + nodeName + " is sending report to its parent");
@@ -187,19 +191,27 @@ public class Node extends ComponentDefinition {
                         } else {
                             System.out.println("Root " + nodeName + " has received all the reports.");
                             if (findMinimumLeafWeight() != 10000) {
-                                for (Map.Entry<String, Integer> entry : neighbours.entrySet()) {
-                                    if (findEdge(nodeName, entry.getKey()).state == EdgeState.Branch)
-                                        trigger(new ChangeRootMessage(nodeName, minFinder), sendPort);
+                                System.out.println("Root " + nodeName + " is sending CHANGE_ROOT with weight " + findMinimumLeafWeight()
+                                        + " And node " + minFinder);
+                                if (minFinder.equalsIgnoreCase(nodeName)) {
+                                    changeRootHandler.handle(new ChangeRootMessage(nodeName, nodeName, nodeName));
+                                } else {
+                                    for (Map.Entry<String, Integer> entry : neighbours.entrySet()) {
+                                        if (findEdge(nodeName, entry.getKey()).state == EdgeState.Branch) {
+                                            trigger(new ChangeRootMessage(nodeName, entry.getKey(), minFinder), sendPort);
+                                        }
+                                    }
                                 }
                             } else {
                                 System.out.println("Node " + nodeName + " should terminate the process.");
                                 // TODO: It should terminate the process and print the tree.
                             }
                         }
+                        reportCount = 0;
                         minimumWeights.clear();
                     }
                 } else {
-                    changeRootHandler.handle(new ChangeRootMessage(nodeName, nodeName));
+                    changeRootHandler.handle(new ChangeRootMessage(nodeName, nodeName, nodeName));
                 }
             }
         }
@@ -291,7 +303,6 @@ public class Node extends ComponentDefinition {
                     if (findEdge(nodeName, entry.getKey()).state == EdgeState.Branch &&
                             !findEdge(nodeName, entry.getKey()).dst.equalsIgnoreCase(event.src)) {
                         System.out.println("Node " + nodeName + " is sending INIT_MESSAGE to node " + entry.getKey());
-                        System.out.println(findEdge(nodeName, entry.getKey()).state);
                         trigger(new StartMessage(nodeName, entry.getKey(), fragmentRoot, fragmentName, fragmentLevel), sendPort);
                     }
                 }
